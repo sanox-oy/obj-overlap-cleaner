@@ -6,22 +6,22 @@ pub enum AssetType {
     NormalQuality,
 }
 
-pub struct LoadTask {
+pub struct TaskContainer {
     pub path: OsString,
     pub asset_type: AssetType,
 }
 
 pub enum ModelLoadTask {
     Terminate,
-    LoadModel(LoadTask),
+    Task(TaskContainer),
 }
 
-pub struct LoadedModel {
+pub struct ModelContainer {
     pub model: crate::Model,
     pub asset_type: AssetType,
 }
 
-pub enum LoadTaskCompleted {
+pub enum ModelLoadTaskResponse {
     Terminated,
-    Model(LoadedModel),
+    Model(ModelContainer),
 }

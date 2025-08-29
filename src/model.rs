@@ -60,43 +60,61 @@ fn try_load_and_process_obj(
     Ok((meshes, materials?))
 }
 
+struct MeshContainer {
+    mesh: Option<TriMesh>,
+    aabb: AxisAlignedBoundingBox,
+    material: TobjMaterial,
+    /// List of indices of vertices that are overlapping with other
+    /// models
+    overlapping_vertice_idxs: Vec<usize>,
+    /// Indicates whether this mesh is totally overlapping
+    to_be_deleted: bool,
+}
+
+impl MeshContainer {
+    fn modified(&self) -> bool {
+        self.to_be_deleted || self.overlapping_vertice_idxs.is_empty()
+    }
+}
+
 pub struct Model {
-    meshes: Option<Vec<TriMesh>>,
-    pub materials: Vec<TobjMaterial>,
-    pub aabbs: Vec<AxisAlignedBoundingBox>,
+    meshes: Vec<MeshContainer>,
     pub aabb: AxisAlignedBoundingBox,
     source_file: OsString,
 }
 
 impl Model {
     pub fn try_new_from_file(path: OsString) -> Result<Self, tobj::LoadError> {
-        let (meshes, materials) = try_load_and_process_obj(&path)?;
+        let (tri_meshes, materials) = try_load_and_process_obj(&path)?;
 
-        let aabbs = meshes.iter().map(|m| m.compute_aabb()).collect::<Vec<_>>();
+        let meshes = tri_meshes
+            .iter()
+            .zip(materials)
+            .map(|(mesh, material)| {
+                let aabb = mesh.compute_aabb();
+                MeshContainer {
+                    mesh: None,
+                    aabb,
+                    material,
+                    overlapping_vertice_idxs: vec![],
+                    to_be_deleted: false,
+                }
+            })
+            .collect::<Vec<_>>();
 
         let mut aabb = AxisAlignedBoundingBox::EMPTY;
-        for ab in aabbs.iter() {
-            aabb.expand_with_aabb(*ab);
+        for mesh in meshes.iter() {
+            aabb.expand_with_aabb(mesh.aabb);
         }
 
         Ok(Self {
-            meshes: None,
-            materials,
-            aabbs,
+            meshes,
             aabb,
             source_file: path,
         })
     }
 
-    pub fn get_meshes(&mut self) -> &Vec<TriMesh> {
-        if self.meshes.is_none() {
-            let (models, _) = try_load_and_process_obj(&self.source_file).expect("LoadError");
-        }
-
-        self.meshes.as_ref().unwrap()
-    }
-
-    pub fn drop_meshes(&mut self) {
-        self.meshes = None;
+    pub fn modified(&self) -> bool {
+        self.meshes.iter().any(|m| m.modified())
     }
 }

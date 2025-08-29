@@ -8,7 +8,7 @@ use crate::{Model, messages};
 
 pub fn model_load_runner(
     rx: Arc<Mutex<mpsc::Receiver<ModelLoadTask>>>,
-    tx: mpsc::Sender<messages::LoadTaskCompleted>,
+    tx: mpsc::Sender<messages::ModelLoadTaskResponse>,
 ) {
     loop {
         let msg = {
@@ -19,20 +19,22 @@ pub fn model_load_runner(
         };
         match msg {
             Ok(task) => match task {
-                ModelLoadTask::LoadModel(task) => {
+                ModelLoadTask::Task(task) => {
                     let path = task.path;
                     let model = Model::try_new_from_file(path.clone())
                         .unwrap_or_else(|_| panic!("Failed loading model from {path:?}"));
 
                     println!("Successfully loaded model from: {path:?}");
-                    tx.send(messages::LoadTaskCompleted::Model(messages::LoadedModel {
-                        model,
-                        asset_type: task.asset_type,
-                    }));
+                    tx.send(messages::ModelLoadTaskResponse::Model(
+                        messages::ModelContainer {
+                            model,
+                            asset_type: task.asset_type,
+                        },
+                    ));
                 }
                 ModelLoadTask::Terminate => {
                     println!("Model load runner done");
-                    tx.send(messages::LoadTaskCompleted::Terminated);
+                    tx.send(messages::ModelLoadTaskResponse::Terminated);
                     return;
                 }
             },
@@ -53,8 +55,8 @@ pub fn scan_folder_and_create_tasks(
 
         if let Some(extension) = p.extension() {
             if extension.eq_ignore_ascii_case("obj") {
-                tx.send(crate::messages::ModelLoadTask::LoadModel(
-                    crate::messages::LoadTask {
+                tx.send(crate::messages::ModelLoadTask::Task(
+                    crate::messages::TaskContainer {
                         path: p.into_os_string(),
                         asset_type: asset_type.clone(),
                     },

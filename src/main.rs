@@ -49,7 +49,7 @@ fn main() {
     let receiver_guard_task = Arc::new(Mutex::new(rx_task));
 
     // Create a channel for workers to send responses.
-    let (tx_resp, rx_resp) = mpsc::channel::<messages::LoadTaskCompleted>();
+    let (tx_resp, rx_resp) = mpsc::channel::<messages::ModelLoadTaskResponse>();
 
     // Spawn worker threads
     let mut workers = Vec::new();
@@ -82,7 +82,7 @@ fn main() {
     while num_running > 0 {
         let resp = rx_resp.recv().unwrap();
         match resp {
-            messages::LoadTaskCompleted::Model(model_resp) => {
+            messages::ModelLoadTaskResponse::Model(model_resp) => {
                 match model_resp.asset_type {
                     messages::AssetType::HighQuality => {
                         assets.hq_assets.push(model_resp.model);
@@ -92,7 +92,7 @@ fn main() {
                     }
                 };
             }
-            messages::LoadTaskCompleted::Terminated => num_running -= 1,
+            messages::ModelLoadTaskResponse::Terminated => num_running -= 1,
         }
     }
 
