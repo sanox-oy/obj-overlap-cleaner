@@ -1,7 +1,4 @@
-use std::{
-    ffi::{OsStr, OsString},
-    path::Path,
-};
+use std::ffi::{OsStr, OsString};
 
 use three_d_asset::{AxisAlignedBoundingBox, Positions, TriMesh, Vec3, Vector2};
 use tobj::{Material as TobjMaterial, Mesh as TobjMesh};
