@@ -1,8 +1,13 @@
+use std::{
+    ffi::{OsStr, OsString},
+    path::Path,
+};
+
 use three_d_asset::{AxisAlignedBoundingBox, Positions, TriMesh, Vec3, Vector2};
 use tobj::{Material as TobjMaterial, Mesh as TobjMesh};
 
 fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
-    let uvs = if mesh.texcoords.len() > 0 {
+    let uvs = if !mesh.texcoords.is_empty() {
         Some(
             mesh.texcoords
                 .chunks_exact(2)
@@ -13,7 +18,7 @@ fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
         None
     };
 
-    let normals = if mesh.normals.len() > 0 {
+    let normals = if !mesh.normals.is_empty() {
         Some(
             mesh.normals
                 .chunks_exact(3)
@@ -39,23 +44,36 @@ fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
     }
 }
 
+fn try_load_and_process_obj(
+    path: &OsStr,
+) -> Result<(Vec<TriMesh>, Vec<TobjMaterial>), tobj::LoadError> {
+    let (models, materials) = tobj::load_obj(
+        path,
+        &tobj::LoadOptions {
+            single_index: true,
+            ..Default::default()
+        },
+    )?;
+
+    let meshes = models
+        .into_iter()
+        .map(|m| tobj_mesh_to_trimesh(m.mesh))
+        .collect::<Vec<_>>();
+
+    Ok((meshes, materials?))
+}
+
 pub struct Model {
-    pub meshes: Vec<TriMesh>,
+    meshes: Option<Vec<TriMesh>>,
     pub materials: Vec<TobjMaterial>,
     pub aabbs: Vec<AxisAlignedBoundingBox>,
     pub aabb: AxisAlignedBoundingBox,
+    source_file: OsString,
 }
 
-impl TryFrom<tobj::LoadResult> for Model {
-    type Error = tobj::LoadError;
-
-    fn try_from(load_result: tobj::LoadResult) -> Result<Self, Self::Error> {
-        let (models, materials) = load_result?;
-
-        let meshes = models
-            .into_iter()
-            .map(|m| tobj_mesh_to_trimesh(m.mesh))
-            .collect::<Vec<_>>();
+impl Model {
+    pub fn try_new_from_file(path: OsString) -> Result<Self, tobj::LoadError> {
+        let (meshes, materials) = try_load_and_process_obj(&path)?;
 
         let aabbs = meshes.iter().map(|m| m.compute_aabb()).collect::<Vec<_>>();
 
@@ -64,11 +82,24 @@ impl TryFrom<tobj::LoadResult> for Model {
             aabb.expand_with_aabb(*ab);
         }
 
-        Ok(Model {
-            meshes,
-            materials: materials?,
+        Ok(Self {
+            meshes: None,
+            materials,
             aabbs,
             aabb,
+            source_file: path,
         })
+    }
+
+    pub fn get_meshes(&mut self) -> &Vec<TriMesh> {
+        if self.meshes.is_none() {
+            let (models, _) = try_load_and_process_obj(&self.source_file).expect("LoadError");
+        }
+
+        self.meshes.as_ref().unwrap()
+    }
+
+    pub fn drop_meshes(&mut self) {
+        self.meshes = None;
     }
 }
