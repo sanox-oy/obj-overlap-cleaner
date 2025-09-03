@@ -319,9 +319,8 @@ dependencies = [
 
 [[package]]
 name = "three-d-asset"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95c40cd76bbe3751f6a286dd09c9971766d37b3a9c222e926f622d098bdcc424"
+version = "0.10.0"
+source = "git+https://github.com/santerioksanen/three-d-asset.git?branch=feature%2Fintersect-return-option#15a4fc014163d9e2e77c93a9316d53b754cc3e89"
 dependencies = [
  "cgmath",
  "half",

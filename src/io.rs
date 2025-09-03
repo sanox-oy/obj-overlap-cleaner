@@ -43,26 +43,37 @@ pub fn model_load_runner(
     }
 }
 
+pub fn scan_folder_for_objs(folder: &OsString) -> impl Iterator<Item = OsString> {
+    let folder = std::path::Path::new(&folder);
+
+    let mut read_dir = folder.read_dir().unwrap();
+
+    std::iter::from_fn(move || {
+        loop {
+            let entry = read_dir.next()?;
+            let p = entry.unwrap().path();
+
+            if let Some(extension) = p.extension() {
+                if extension.eq_ignore_ascii_case("obj") {
+                    return Some(p.into_os_string());
+                }
+            }
+        }
+    })
+}
+
 pub fn scan_folder_and_create_tasks(
     folder: &OsString,
     asset_type: messages::AssetType,
     tx: &mpsc::Sender<crate::messages::ModelLoadTask>,
 ) {
-    let folder = std::path::Path::new(&folder);
-
-    for file in folder.read_dir().unwrap() {
-        let p = file.unwrap().path();
-
-        if let Some(extension) = p.extension() {
-            if extension.eq_ignore_ascii_case("obj") {
-                tx.send(crate::messages::ModelLoadTask::Task(
-                    crate::messages::TaskContainer {
-                        path: p.into_os_string(),
-                        asset_type: asset_type.clone(),
-                    },
-                ))
-                .expect("Error while sending task");
-            }
-        }
+    for obj_file in scan_folder_for_objs(folder) {
+        tx.send(crate::messages::ModelLoadTask::Task(
+            crate::messages::TaskContainer {
+                path: obj_file,
+                asset_type: asset_type.clone(),
+            },
+        ))
+        .expect("Error while sending task");
     }
 }

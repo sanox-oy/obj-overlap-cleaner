@@ -60,8 +60,8 @@ fn try_load_and_process_obj(
     Ok((meshes, materials?))
 }
 
-struct MeshContainer {
-    mesh: Option<TriMesh>,
+pub struct MeshContainer {
+    mesh: TriMesh,
     aabb: AxisAlignedBoundingBox,
     material: TobjMaterial,
     /// List of indices of vertices that are overlapping with other
@@ -75,10 +75,27 @@ impl MeshContainer {
     fn modified(&self) -> bool {
         self.to_be_deleted || self.overlapping_vertice_idxs.is_empty()
     }
+
+    /// Calculates vertice indices from self, which are overlapping with other
+    pub fn calc_overlapping_vertice_idxs(&self, other: &Self) -> Vec<usize> {
+        let mut overlapping = vec![];
+        if let Some(intersection) = self.aabb.intersection(other.aabb) {
+            //let vertices =
+            match &self.mesh.positions {
+                Positions::F32(vertices) => {
+                    for (idx, vertex) in vertices.iter().enumerate() {
+                        if intersection.is_inside(*vertex) {}
+                    }
+                }
+                _ => panic!("Positions are not F32"),
+            }
+        }
+        return overlapping;
+    }
 }
 
 pub struct Model {
-    meshes: Vec<MeshContainer>,
+    pub meshes: Vec<MeshContainer>,
     pub aabb: AxisAlignedBoundingBox,
     source_file: OsString,
 }
@@ -88,12 +105,12 @@ impl Model {
         let (tri_meshes, materials) = try_load_and_process_obj(&path)?;
 
         let meshes = tri_meshes
-            .iter()
+            .into_iter()
             .zip(materials)
             .map(|(mesh, material)| {
                 let aabb = mesh.compute_aabb();
                 MeshContainer {
-                    mesh: None,
+                    mesh,
                     aabb,
                     material,
                     overlapping_vertice_idxs: vec![],
