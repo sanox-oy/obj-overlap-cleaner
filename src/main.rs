@@ -31,4 +31,5 @@ fn main() {
 
     println!("Finding non-overlapping models");
     assets.process_overlaps();
+    assets.mark_vertices_to_delete();
 }

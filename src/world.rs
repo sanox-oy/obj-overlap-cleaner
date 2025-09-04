@@ -23,22 +23,43 @@ fn hq_asset_worker(
 
         let hq_asset_path = match files.pop() {
             Some(asset) => asset,
-            None => return,
+            None => {
+                println!("Thread done!");
+                return;
+            }
         };
 
         drop(files);
 
-        let hq_asset = crate::Model::try_new_from_file(hq_asset_path.clone()).unwrap();
+        let hq_asset = crate::Model::try_new_from_file(hq_asset_path.clone(), false).unwrap();
 
         for normal_asset in normal_assets.iter() {
             let asset_clone = normal_asset.clone();
             let asset_read = asset_clone.read().unwrap();
 
+            let mut overlaps: Vec<Vec<usize>> = vec![];
+
             if let Some(_) = asset_read.aabb.intersection(hq_asset.aabb) {
                 for mesh in asset_read.meshes.iter() {
+                    let mut mesh_overlaps = vec![];
+
                     for hq_mesh in hq_asset.meshes.iter() {
-                        let overlaps = mesh.calc_overlapping_vertice_idxs(hq_mesh);
+                        mesh_overlaps
+                            .extend_from_slice(&mesh.calc_overlapping_vertice_idxs(hq_mesh));
                     }
+                    overlaps.push(mesh_overlaps);
+                }
+            }
+
+            let no_overlaps = overlaps.is_empty() || overlaps.iter().all(|o| o.is_empty());
+
+            if !no_overlaps {
+                drop(asset_read);
+                let mut asset_write = asset_clone.write().unwrap();
+                for (idx, overlap) in overlaps.iter().enumerate() {
+                    asset_write.meshes[idx]
+                        .overlapping_vertice_idxs
+                        .extend_from_slice(overlap);
                 }
             }
         }
@@ -130,6 +151,13 @@ impl WorldAssets {
 
         for hq_asset in self.hq_asset_files.iter() {
             println!("Threads done, {hq_asset:?}");
+        }
+    }
+
+    pub fn mark_vertices_to_delete(&mut self) {
+        for model in self.normal_assets.iter() {
+            let mut model_write = model.write().unwrap();
+            model_write.mark_vertices_to_delete();
         }
     }
 }
