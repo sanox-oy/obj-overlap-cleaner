@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::ffi::OsString;
+use std::{ffi::OsString, time::Instant};
 
 mod io;
 mod messages;
@@ -23,6 +23,7 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
+    let start_time = Instant::now();
 
     println!("Running with args: {args:?}");
 
@@ -32,4 +33,7 @@ fn main() {
     println!("Finding non-overlapping models");
     assets.process_overlaps();
     assets.mark_vertices_to_delete();
+
+    let duration = (Instant::now() - start_time).as_secs();
+    println!("Done in {duration} s");
 }

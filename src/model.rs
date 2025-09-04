@@ -74,8 +74,14 @@ fn vertex_overlapping(vertex: &Vec3, mesh: &TriMesh, threshold: f32) -> bool {
         _ => panic!("Not F32"),
     };
 
+    let threshold2 = threshold.powi(2) * 4.0;
+
     for indexes in indices.chunks_exact(3) {
         let p0 = vertices[indexes[0] as usize];
+        if p0.distance2(*vertex) > threshold2 {
+            continue;
+        }
+
         let p1 = vertices[indexes[1] as usize];
         let p2 = vertices[indexes[2] as usize];
 
