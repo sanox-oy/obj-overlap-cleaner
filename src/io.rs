@@ -21,7 +21,7 @@ pub fn model_load_runner(
             Ok(task) => match task {
                 ModelLoadTask::Task(task) => {
                     let path = task.path;
-                    let model = Model::try_new_from_file(path.clone(), true)
+                    let model = Model::try_new_from_file(path.clone(), true, false)
                         .unwrap_or_else(|_| panic!("Failed loading model from {path:?}"));
 
                     println!("Successfully loaded model from: {path:?}");

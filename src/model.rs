@@ -6,6 +6,8 @@ use three_d_asset::{
 };
 use tobj::{Material as TobjMaterial, Mesh as TobjMesh};
 
+use crate::grid::IndexGrid;
+
 fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
     let uvs = if !mesh.texcoords.is_empty() {
         Some(
@@ -63,13 +65,15 @@ fn try_load_and_process_obj(
     Ok((meshes, materials?))
 }
 
-fn vertex_overlapping(vertex: &Vec3, mesh: &TriMesh, threshold: f32) -> bool {
-    let indices = match &mesh.indices {
-        Indices::U32(indices) => indices,
-        _ => panic!("Not implemented"),
+fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: f32) -> bool {
+    let index_grid = mesh_container.index_grid.as_ref().unwrap();
+
+    // TODO: Expand with contents of neighboring cells if closer than threshold to boundary
+    let Some(indices) = index_grid.get_indices(vertex.x, vertex.y, vertex.z) else {
+        return false;
     };
 
-    let vertices = match &mesh.positions {
+    let vertices = match &mesh_container.mesh.positions {
         Positions::F32(vertices) => vertices,
         _ => panic!("Not F32"),
     };
@@ -135,6 +139,7 @@ pub struct MeshContainer {
     /// Created from overlapping_vertice_idxs, where
     /// those that are on the edge are removed (i.e. has neigbors that are non-overlapping)
     indices_to_delete: Vec<usize>,
+    index_grid: Option<IndexGrid>,
 }
 
 impl MeshContainer {
@@ -142,7 +147,12 @@ impl MeshContainer {
         self.to_be_deleted || self.overlapping_vertice_idxs.is_empty()
     }
 
-    pub fn new(mesh: TriMesh, material: TobjMaterial, calc_edge_len: bool) -> Self {
+    pub fn new(
+        mesh: TriMesh,
+        material: TobjMaterial,
+        calc_edge_len: bool,
+        init_index_grid: bool,
+    ) -> Self {
         let aabb = mesh.compute_aabb();
 
         let mean_edge_len = match calc_edge_len {
@@ -168,6 +178,15 @@ impl MeshContainer {
             false => None,
         };
 
+        let index_grid = match init_index_grid {
+            true => {
+                let mut index_grid = IndexGrid::new();
+                index_grid.populate_from_trimesh(&mesh);
+                Some(index_grid)
+            }
+            false => None,
+        };
+
         Self {
             mesh,
             aabb,
@@ -176,6 +195,7 @@ impl MeshContainer {
             to_be_deleted: false,
             mean_edge_len,
             indices_to_delete: vec![],
+            index_grid,
         }
     }
 
@@ -191,7 +211,7 @@ impl MeshContainer {
                 Positions::F32(vertices) => {
                     for (idx, vertex) in vertices.iter().enumerate() {
                         if intersection.is_inside(*vertex) {
-                            if vertex_overlapping(vertex, &other.mesh, threshold) {
+                            if vertex_overlapping(vertex, other, threshold) {
                                 overlapping.push(idx);
                             }
                         }
@@ -227,13 +247,19 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn try_new_from_file(path: OsString, calc_edge_len: bool) -> Result<Self, tobj::LoadError> {
+    pub fn try_new_from_file(
+        path: OsString,
+        calc_edge_len: bool,
+        init_index_grid: bool,
+    ) -> Result<Self, tobj::LoadError> {
         let (tri_meshes, materials) = try_load_and_process_obj(&path)?;
 
         let meshes = tri_meshes
             .into_iter()
             .zip(materials)
-            .map(|(mesh, material)| MeshContainer::new(mesh, material, calc_edge_len))
+            .map(|(mesh, material)| {
+                MeshContainer::new(mesh, material, calc_edge_len, init_index_grid)
+            })
             .collect::<Vec<_>>();
 
         let mut aabb = AxisAlignedBoundingBox::EMPTY;

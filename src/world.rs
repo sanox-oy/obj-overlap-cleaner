@@ -31,7 +31,7 @@ fn hq_asset_worker(
 
         drop(files);
 
-        let hq_asset = crate::Model::try_new_from_file(hq_asset_path.clone(), false).unwrap();
+        let hq_asset = crate::Model::try_new_from_file(hq_asset_path.clone(), false, true).unwrap();
 
         for normal_asset in normal_assets.iter() {
             let asset_clone = normal_asset.clone();

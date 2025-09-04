@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::{ffi::OsString, time::Instant};
 
+mod grid;
 mod io;
 mod messages;
 mod model;
