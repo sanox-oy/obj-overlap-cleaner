@@ -1,9 +1,13 @@
 use std::{
     ffi::OsString,
+    fs::File,
+    io::{self, BufWriter, Write},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, mpsc},
 };
 
 use image::ImageReader;
+use three_d_asset::{Positions, Vec2, Vec3, material};
 
 use crate::messages;
 use crate::messages::ModelLoadTask;
@@ -28,6 +32,16 @@ pub fn model_load_runner(
                         .unwrap_or_else(|_| panic!("Failed loading model from {path:?}"));
 
                     println!("Successfully loaded model from: {path:?}");
+
+                    for (idx, mesh) in model.meshes.iter().enumerate() {
+                        println!(
+                            "Mesh {idx} has {} vertices and {:?} indices, uvs: {}",
+                            mesh.mesh.positions.len(),
+                            mesh.mesh.indices.len(),
+                            mesh.mesh.uvs.as_ref().unwrap().len(),
+                        );
+                    }
+
                     tx.send(messages::ModelLoadTaskResponse::Model(
                         messages::ModelContainer {
                             model,
@@ -83,12 +97,184 @@ pub fn scan_folder_and_create_tasks(
     }
 }
 
+fn copy_texture(
+    texture_file: &String,
+    source_folder: &Path,
+    dest_folder: &Path,
+    downscale_factor: u32,
+) {
+    let texture_src = source_folder.join(texture_file.clone());
+    let texture_dst = dest_folder.clone().join(texture_file.clone());
+    if texture_dst.exists() {
+        return;
+    }
+
+    if !texture_src.exists() {
+        panic!("Unable to load texture: {texture_src:?}");
+    }
+
+    if downscale_factor == 1 {
+        std::fs::copy(texture_src, texture_dst).expect("Failed to copy texture");
+    } else {
+        let img = ImageReader::open(texture_src)
+            .expect("Couldnt open image")
+            .decode()
+            .expect("Couldnt decode image");
+
+        let resized = img.resize_exact(
+            img.width() / downscale_factor,
+            img.height() / downscale_factor,
+            image::imageops::FilterType::Triangle,
+        );
+
+        resized.save(texture_dst).expect("Couldnt save image");
+    }
+}
+
+fn write_header(writer: &mut BufWriter<File>) {
+    writeln!(writer, "#");
+    writeln!(writer, "# Wavefront OBJ file");
+    writeln!(writer, "# Created by obj-overlap-cleaner");
+    writeln!(writer, "# https://github.com/sanox-oy/obj-overlap-cleaner");
+    writeln!(writer, "#");
+}
+
+fn write_mtllib(
+    source_folder: &Path,
+    dest_folder: &Path,
+    dest: PathBuf,
+    materials: &[&tobj::Material],
+) {
+    let mut file = File::create(dest).expect("Couldnt create file");
+    let mut file_buf = BufWriter::new(file);
+
+    write_header(&mut file_buf);
+
+    for material in materials {
+        writeln!(file_buf, "");
+        writeln!(file_buf, "newmtl {}", material.name);
+        if let Some(ka) = material.ambient {
+            writeln!(file_buf, "Ka {} {} {}", ka[0], ka[1], ka[2]);
+        }
+        if let Some(kd) = material.diffuse {
+            writeln!(file_buf, "Kd {} {} {}", kd[0], kd[1], kd[2]);
+        }
+        if let Some(d) = material.dissolve {
+            writeln!(file_buf, "d {}", d);
+        }
+        if let Some(ns) = material.shininess {
+            writeln!(file_buf, "Ns {}", ns);
+        }
+        if let Some(illum) = material.illumination_model {
+            writeln!(file_buf, "illum {}", illum);
+        }
+        if let Some(map_kd) = &material.diffuse_texture {
+            writeln!(file_buf, "map_Kd {}", map_kd);
+
+            // Also process the texture
+            copy_texture(map_kd, source_folder, dest_folder, 2);
+        }
+    }
+
+    file_buf.flush().expect("Failed to write to disk");
+}
+
 pub trait WriteToFolder {
     fn write_to_folder(&self, folder: &OsString);
 }
 
 impl WriteToFolder for Model {
-    fn write_to_folder(&self, folder: &OsString) {}
+    fn write_to_folder(&self, folder: &OsString) {
+        println!("Writing model to disk");
+
+        let source = std::path::PathBuf::from(self.source_file.clone());
+        let source_folder = source.parent().expect("File doesnt have parent path");
+        let filename = source.file_name().expect("No filename");
+
+        let dest_folder = std::path::PathBuf::from(folder);
+        let dest = dest_folder.clone().join(filename);
+
+        let mut dest_mtl = dest.clone();
+        dest_mtl.set_extension("mtl");
+
+        let mut out_obj_file = File::create(dest).expect("Unable to create file");
+        let mut out_obj_writer = BufWriter::new(out_obj_file);
+
+        write_header(&mut out_obj_writer);
+
+        writeln!(
+            out_obj_writer,
+            "mtllib {}",
+            dest_mtl.file_name().unwrap().to_string_lossy()
+        );
+        writeln!(out_obj_writer, "");
+
+        let mut vertices = vec![];
+        let mut uvs: Vec<Vec2> = vec![];
+        let mut normals: Vec<Vec3> = vec![];
+
+        for mesh in &self.meshes {
+            vertices.extend_from_slice(&mesh.mesh.positions.to_f32());
+
+            if let Some(mesh_uvs) = &mesh.mesh.uvs {
+                uvs.extend_from_slice(&mesh_uvs);
+            }
+
+            if let Some(mesh_normals) = &mesh.mesh.normals {
+                normals.extend_from_slice(&mesh_normals);
+            }
+        }
+
+        for vertex in vertices.iter() {
+            writeln!(
+                out_obj_writer,
+                "v {:.15} {:.15} {:.15}",
+                vertex.x, vertex.y, vertex.z
+            );
+        }
+
+        for uv in uvs.iter() {
+            writeln!(out_obj_writer, "vt {:.15} {:.15}", uv.x, uv.y);
+        }
+
+        for normal in normals.iter() {
+            writeln!(
+                out_obj_writer,
+                "vn {:.15} {:.15} {:.15}",
+                normal.x, normal.y, normal.z
+            );
+        }
+
+        let mut written_vertex_cnt = 0;
+
+        for mesh in self.meshes.iter() {
+            writeln!(out_obj_writer, "g default");
+            writeln!(out_obj_writer, "usemtl {}", mesh.material.name);
+
+            mesh.mesh.for_each_triangle(|i0, i1, i2| {
+                //if i0 != i1 && i1 != i2 && i2 != i0 {
+                writeln!(
+                    out_obj_writer,
+                    "f {}/{} {}/{} {}/{}",
+                    i0 + written_vertex_cnt + 1,
+                    i0 + written_vertex_cnt + 1,
+                    i1 + written_vertex_cnt + 1,
+                    i1 + written_vertex_cnt + 1,
+                    i2 + written_vertex_cnt + 1,
+                    i2 + written_vertex_cnt + 1
+                );
+                //}
+            });
+
+            written_vertex_cnt += mesh.mesh.positions.len();
+        }
+
+        out_obj_writer.flush().expect("Failed to write to disk");
+
+        // Write materials
+        let materials = self.meshes.iter().map(|m| &m.material).collect::<Vec<_>>();
+        write_mtllib(source_folder, dest_folder.as_path(), dest_mtl, &materials);
+    }
 }
 
 impl WriteToFolder for ModelReference {
@@ -122,35 +308,8 @@ impl WriteToFolder for ModelReference {
                 &material.shininess_texture,
             ];
 
-            for texture in textures {
-                if let Some(texture_file) = texture {
-                    let texture_src = source_folder.join(texture_file.clone());
-                    let texture_dst = dest_folder.clone().join(texture_file.clone());
-                    if texture_dst.exists() {
-                        continue;
-                    }
-
-                    if !texture_src.exists() {
-                        panic!("Unable to load texture: {texture_src:?}");
-                    }
-
-                    if self.texture_downscale_factor == 1 {
-                        std::fs::copy(texture_src, texture_dst).expect("Failed to copy texture");
-                    } else {
-                        let mut img = ImageReader::open(texture_src)
-                            .expect("Couldnt open image")
-                            .decode()
-                            .expect("Couldnt decode image");
-
-                        let resized = img.resize_exact(
-                            img.width() / self.texture_downscale_factor,
-                            img.height() / self.texture_downscale_factor,
-                            image::imageops::FilterType::Triangle,
-                        );
-
-                        resized.save(texture_dst).expect("Couldnt save image");
-                    }
-                }
+            for texture_file in textures.into_iter().flatten() {
+                copy_texture(texture_file, source_folder, &dest_folder, self.texture_downscale_factor);
             }
         }
     }

@@ -141,8 +141,7 @@ impl WorldAssets {
 
     pub fn process_overlaps(&mut self) {
         let process_queue = Arc::new(Mutex::new(self.hq_asset_files.clone()));
-        let hq_asset_references: Arc<Mutex<Vec<crate::model::ModelReference>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let hq_asset_references: Arc<Mutex<Vec<ModelReference>>> = Arc::new(Mutex::new(Vec::new()));
 
         let mut workers = vec![];
 

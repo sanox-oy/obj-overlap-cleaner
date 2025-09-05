@@ -136,9 +136,9 @@ pub struct ModelReference {
 
 #[derive(Debug)]
 pub struct MeshContainer {
-    mesh: TriMesh,
+    pub mesh: TriMesh,
     aabb: AxisAlignedBoundingBox,
-    material: TobjMaterial,
+    pub material: TobjMaterial,
     /// List of indices of vertices that are overlapping with other
     /// models
     pub overlapping_vertice_idxs: Vec<usize>,
@@ -294,7 +294,7 @@ impl MeshContainer {
             // Then remove the triangle
             for (i, t_indices) in indices.chunks_exact(3).enumerate() {
                 if t_indices.contains(&(*idx as u32)) {
-                    t_indices_to_remove.push(1);
+                    t_indices_to_remove.push(i);
                 }
             }
 
@@ -321,7 +321,7 @@ impl MeshContainer {
 pub struct Model {
     pub meshes: Vec<MeshContainer>,
     pub aabb: AxisAlignedBoundingBox,
-    source_file: OsString,
+    pub source_file: OsString,
 }
 
 impl Model {
