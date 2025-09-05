@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use three_d_asset::{AxisAlignedBoundingBox, Indices, Positions, TriMesh, Vec3, Vector3};
+use three_d_asset::{Indices, Positions, TriMesh, Vec3, Vector3};
 
 const GRID_RESOLUTION: u32 = 10;
 

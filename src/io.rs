@@ -43,10 +43,7 @@ pub fn model_load_runner(
                     }
 
                     tx.send(messages::ModelLoadTaskResponse::Model(
-                        messages::ModelContainer {
-                            model,
-                            asset_type: task.asset_type,
-                        },
+                        messages::ModelContainer { model },
                     ))
                     .expect("Failed to send result");
                 }
@@ -83,15 +80,11 @@ pub fn scan_folder_for_objs(folder: &OsString) -> impl Iterator<Item = OsString>
 
 pub fn scan_folder_and_create_tasks(
     folder: &OsString,
-    asset_type: messages::AssetType,
     tx: &mpsc::Sender<crate::messages::ModelLoadTask>,
 ) {
     for obj_file in scan_folder_for_objs(folder) {
         tx.send(crate::messages::ModelLoadTask::Task(
-            crate::messages::TaskContainer {
-                path: obj_file,
-                asset_type: asset_type.clone(),
-            },
+            crate::messages::TaskContainer { path: obj_file },
         ))
         .expect("Error while sending task");
     }

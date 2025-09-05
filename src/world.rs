@@ -98,11 +98,7 @@ impl WorldAssets {
         }
         let mut num_running = num_os_threads;
 
-        crate::io::scan_folder_and_create_tasks(
-            &normal_asset_folder,
-            crate::messages::AssetType::NormalQuality,
-            &tx_task,
-        );
+        crate::io::scan_folder_and_create_tasks(&normal_asset_folder, &tx_task);
 
         // Create tasks to terminate workers
         for _ in 0..num_os_threads {
