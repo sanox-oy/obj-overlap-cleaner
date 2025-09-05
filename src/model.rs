@@ -1,15 +1,17 @@
-use core::f32;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
 };
 
 use three_d_asset::{
     AxisAlignedBoundingBox, Indices, InnerSpace, MetricSpace, Positions, TriMesh, Vec3, Vector2,
+    Vector3,
 };
 use tobj::{Material as TobjMaterial, Mesh as TobjMesh};
 
 use crate::grid::IndexGrid;
+
+const EPSILON: f64 = 1e-9;
 
 fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
     let uvs = if !mesh.texcoords.is_empty() {
@@ -69,11 +71,18 @@ fn try_load_and_process_obj(
 }
 
 fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: f32) -> bool {
-    let index_grid = mesh_container.index_grid.as_ref().unwrap();
+    //    let index_grid = mesh_container.index_grid.as_ref().unwrap();
+    //
+    //    // TODO: Expand with contents of neighboring cells if closer than threshold to boundary
+    //    let Some(indices) = index_grid.get_indices(vertex.x, vertex.y, vertex.z) else {
+    //        return false;
+    //    };
 
-    // TODO: Expand with contents of neighboring cells if closer than threshold to boundary
-    let Some(indices) = index_grid.get_indices(vertex.x, vertex.y, vertex.z) else {
-        return false;
+    let vertex: Vector3<f64> = vertex.map(|x| x as f64);
+
+    let indices = match &mesh_container.mesh.indices {
+        Indices::U32(indices) => indices,
+        _ => panic!("Indices not U32"),
     };
 
     let vertices = match &mesh_container.mesh.positions {
@@ -81,43 +90,44 @@ fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: 
         _ => panic!("Not F32"),
     };
 
-    let threshold2 = threshold.powi(2) * 4.0;
-
-    for indexes in indices.chunks_exact(3) {
-        let p0 = vertices[indexes[0] as usize];
-        if p0.distance2(*vertex) > threshold2 {
-            continue;
-        }
-
-        let p1 = vertices[indexes[1] as usize];
-        let p2 = vertices[indexes[2] as usize];
+    for tri in indices.chunks_exact(3) {
+        let mut p0: Vector3<f64> = vertices[tri[0] as usize].map(|x| x as f64);
+        let mut p1: Vector3<f64> = vertices[tri[1] as usize].map(|x| x as f64);
+        let mut p2: Vector3<f64> = vertices[tri[2] as usize].map(|x| x as f64);
 
         let normal = (p1 - p0).cross(p2 - p0).normalize();
 
         // distance between vertex and plane
-        let dist = normal.dot(*vertex - p0).abs();
+        let dist = normal.dot(vertex - p0).abs() as f32;
         if dist > threshold {
             continue;
         }
+
+        // Expand the triangle slightly
+        let center = (p0 + p1 + p2) / 3.0;
+
+        p0 += (p0 - center) * 0.15;
+        p1 += (p1 - center) * 0.15;
+        p2 += (p2 - center) * 0.15;
 
         // At this point the distance is already less than threshold.
         // Just check that the point lands within the triangle
 
         // Check against first edge
         let e0n = (p1 - p0).cross(normal);
-        if e0n.dot(*vertex - p0) > 0.0 {
+        if e0n.dot(vertex - p0) > EPSILON {
             continue;
         }
 
         // Second edge
         let e1n = (p2 - p1).cross(normal);
-        if e1n.dot(*vertex - p1) > 0.0 {
+        if e1n.dot(vertex - p1) > EPSILON {
             continue;
         }
 
         // Final edge
         let e2n = (p0 - p2).cross(normal);
-        if e2n.dot(*vertex - p2) > 0.0 {
+        if e2n.dot(vertex - p2) > EPSILON {
             continue;
         }
 
@@ -213,9 +223,10 @@ impl MeshContainer {
     /// Calculates vertice indices from self, which are overlapping with other
     pub fn calc_overlapping_vertice_idxs(&self, other: &Self) -> Vec<usize> {
         let mut overlapping = vec![];
-        let threshold = self
-            .mean_edge_len
-            .expect("Trying to calculate overlapping without mean edge len");
+        let threshold = 4.0
+            * self
+                .mean_edge_len
+                .expect("Trying to calculate overlapping without mean edge len");
 
         if let Some(intersection) = self.aabb.intersection(other.aabb) {
             match &self.mesh.positions {
@@ -255,6 +266,8 @@ impl MeshContainer {
         let mut indices_to_delete =
             HashSet::from_iter(self.overlapping_vertice_idxs.iter().cloned());
 
+        let mut indices_to_keep = HashSet::new();
+
         // Iterate over each triangle
         for t_indices in indices.chunks_exact(3) {
             // If all or none are overlapping, just continue
@@ -270,50 +283,70 @@ impl MeshContainer {
             // The remaining case is so that they have non-overlapping neighbors
             for (idx, overlaps) in overlapping.iter().enumerate() {
                 if *overlaps {
-                    indices_to_delete.remove(&(t_indices[idx] as usize));
+                    indices_to_keep.insert(t_indices[idx]);
                 }
             }
+        }
+
+        for index in indices_to_keep {
+            indices_to_delete.remove(&(index as usize));
         }
 
         self.indices_to_delete = indices_to_delete;
     }
 
     fn do_delete_vertices(&mut self) {
-        let mut vertices = self.mesh.positions.to_f32();
-        let mut indices = self.mesh.indices.to_u32().unwrap();
+        let vertices = match &self.mesh.positions {
+            Positions::F32(vertices) => vertices,
+            _ => panic!("Positions not F32"),
+        };
+        let indices = match &self.mesh.indices {
+            Indices::U32(indices) => indices,
+            _ => panic!("Indices not U32"),
+        };
 
-        let mut vertices_to_delete = Vec::from_iter(self.indices_to_delete.iter().cloned());
-        vertices_to_delete.sort();
+        let mut new_vertices =
+            Vec::with_capacity(self.mesh.vertex_count() - self.indices_to_delete.len());
+        let mut remap = vec![None; self.mesh.vertex_count()];
+        let mut new_uvs = Vec::new();
 
-        for idx in vertices_to_delete.iter().rev() {
-            let mut t_indices_to_remove = vec![];
-
-            // First remove the vertex
-            vertices.remove(*idx);
-
-            // Then remove the triangle
-            for (i, t_indices) in indices.chunks_exact(3).enumerate() {
-                if t_indices.contains(&(*idx as u32)) {
-                    t_indices_to_remove.push(i);
-                }
+        for (old_idx, v) in vertices.iter().enumerate() {
+            if self.indices_to_delete.contains(&old_idx) {
+                continue;
             }
 
-            for t_index in t_indices_to_remove.iter().rev() {
-                indices.remove(*t_index * 3 + 2);
-                indices.remove(*t_index * 3 + 1);
-                indices.remove(*t_index);
+            if let Some(uvs) = &self.mesh.uvs {
+                new_uvs.push(uvs[old_idx]);
             }
 
-            // Then subtract one from all indices that are > then idx
-            for index in indices.iter_mut() {
-                if *index > *idx as u32 {
-                    *index -= 1;
+            let new_idx = new_vertices.len();
+            new_vertices.push(*v);
+            remap[old_idx] = Some(new_idx);
+        }
+
+        let mut new_indices = Vec::new();
+
+        for tri in indices.chunks_exact(3) {
+            if let (Some(i0), Some(i1), Some(i2)) = (
+                remap[tri[0] as usize],
+                remap[tri[1] as usize],
+                remap[tri[2] as usize],
+            ) {
+                if i0 != i1 && i1 != i2 && i2 != i0 {
+                    new_indices.extend_from_slice(&[i0 as u32, i1 as u32, i2 as u32]);
                 }
             }
         }
 
-        self.mesh.positions = Positions::F32(vertices);
-        self.mesh.indices = Indices::U32(indices);
+        self.mesh.positions = Positions::F32(new_vertices);
+        self.mesh.indices = Indices::U32(new_indices);
+
+        match new_uvs.is_empty() {
+            true => self.mesh.uvs = None,
+            false => self.mesh.uvs = Some(new_uvs),
+        }
+        self.mesh.normals = None;
+        self.mesh.tangents = None;
     }
 }
 

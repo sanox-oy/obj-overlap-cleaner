@@ -104,7 +104,7 @@ fn copy_texture(
     downscale_factor: u32,
 ) {
     let texture_src = source_folder.join(texture_file.clone());
-    let texture_dst = dest_folder.clone().join(texture_file.clone());
+    let texture_dst = dest_folder.join(texture_file.clone());
     if texture_dst.exists() {
         return;
     }
@@ -132,11 +132,12 @@ fn copy_texture(
 }
 
 fn write_header(writer: &mut BufWriter<File>) {
-    writeln!(writer, "#");
-    writeln!(writer, "# Wavefront OBJ file");
-    writeln!(writer, "# Created by obj-overlap-cleaner");
-    writeln!(writer, "# https://github.com/sanox-oy/obj-overlap-cleaner");
-    writeln!(writer, "#");
+    writeln!(writer, "#").expect("Failed to write mesh");
+    writeln!(writer, "# Wavefront OBJ file").expect("Failed to write mesh");
+    writeln!(writer, "# Created by obj-overlap-cleaner").expect("Failed to write mesh");
+    writeln!(writer, "# https://github.com/sanox-oy/obj-overlap-cleaner")
+        .expect("Failed to write mesh");
+    writeln!(writer, "#").expect("Failed to write mesh");
 }
 
 fn write_mtllib(
@@ -151,25 +152,25 @@ fn write_mtllib(
     write_header(&mut file_buf);
 
     for material in materials {
-        writeln!(file_buf, "");
-        writeln!(file_buf, "newmtl {}", material.name);
+        writeln!(file_buf, "").expect("Failed to write mesh");
+        writeln!(file_buf, "newmtl {}", material.name).expect("Failed to write mesh");
         if let Some(ka) = material.ambient {
-            writeln!(file_buf, "Ka {} {} {}", ka[0], ka[1], ka[2]);
+            writeln!(file_buf, "Ka {} {} {}", ka[0], ka[1], ka[2]).expect("Failed to write mesh");
         }
         if let Some(kd) = material.diffuse {
-            writeln!(file_buf, "Kd {} {} {}", kd[0], kd[1], kd[2]);
+            writeln!(file_buf, "Kd {} {} {}", kd[0], kd[1], kd[2]).expect("Failed to write mesh");
         }
         if let Some(d) = material.dissolve {
-            writeln!(file_buf, "d {}", d);
+            writeln!(file_buf, "d {}", d).expect("Failed to write mesh");
         }
         if let Some(ns) = material.shininess {
-            writeln!(file_buf, "Ns {}", ns);
+            writeln!(file_buf, "Ns {}", ns).expect("Failed to write mesh");
         }
         if let Some(illum) = material.illumination_model {
-            writeln!(file_buf, "illum {}", illum);
+            writeln!(file_buf, "illum {}", illum).expect("Failed to write mesh");
         }
         if let Some(map_kd) = &material.diffuse_texture {
-            writeln!(file_buf, "map_Kd {}", map_kd);
+            writeln!(file_buf, "map_Kd {}", map_kd).expect("Failed to write mesh");
 
             // Also process the texture
             copy_texture(map_kd, source_folder, dest_folder, 2);
@@ -206,8 +207,9 @@ impl WriteToFolder for Model {
             out_obj_writer,
             "mtllib {}",
             dest_mtl.file_name().unwrap().to_string_lossy()
-        );
-        writeln!(out_obj_writer, "");
+        )
+        .expect("Failed to write mesh");
+        writeln!(out_obj_writer, "").expect("Failed to write mesh");
 
         let mut vertices = vec![];
         let mut uvs: Vec<Vec2> = vec![];
@@ -230,11 +232,12 @@ impl WriteToFolder for Model {
                 out_obj_writer,
                 "v {:.15} {:.15} {:.15}",
                 vertex.x, vertex.y, vertex.z
-            );
+            )
+            .expect("Failed to write mesh");
         }
 
         for uv in uvs.iter() {
-            writeln!(out_obj_writer, "vt {:.15} {:.15}", uv.x, uv.y);
+            writeln!(out_obj_writer, "vt {:.15} {:.15}", uv.x, uv.y).expect("Failed to write mesh");
         }
 
         for normal in normals.iter() {
@@ -242,17 +245,18 @@ impl WriteToFolder for Model {
                 out_obj_writer,
                 "vn {:.15} {:.15} {:.15}",
                 normal.x, normal.y, normal.z
-            );
+            )
+            .expect("Failed to write mesh");
         }
 
         let mut written_vertex_cnt = 0;
 
         for mesh in self.meshes.iter() {
-            writeln!(out_obj_writer, "g default");
-            writeln!(out_obj_writer, "usemtl {}", mesh.material.name);
+            writeln!(out_obj_writer, "g default").expect("Failed to write mesh");
+            writeln!(out_obj_writer, "usemtl {}", mesh.material.name)
+                .expect("Failed to write mesh");
 
             mesh.mesh.for_each_triangle(|i0, i1, i2| {
-                //if i0 != i1 && i1 != i2 && i2 != i0 {
                 writeln!(
                     out_obj_writer,
                     "f {}/{} {}/{} {}/{}",
@@ -262,8 +266,8 @@ impl WriteToFolder for Model {
                     i1 + written_vertex_cnt + 1,
                     i2 + written_vertex_cnt + 1,
                     i2 + written_vertex_cnt + 1
-                );
-                //}
+                )
+                .expect("Failed to write mesh");
             });
 
             written_vertex_cnt += mesh.mesh.positions.len();
@@ -309,7 +313,12 @@ impl WriteToFolder for ModelReference {
             ];
 
             for texture_file in textures.into_iter().flatten() {
-                copy_texture(texture_file, source_folder, &dest_folder, self.texture_downscale_factor);
+                copy_texture(
+                    texture_file,
+                    source_folder,
+                    &dest_folder,
+                    self.texture_downscale_factor,
+                );
             }
         }
     }
