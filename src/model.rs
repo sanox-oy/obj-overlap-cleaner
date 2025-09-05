@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     ffi::{OsStr, OsString},
 };
 
@@ -331,10 +331,11 @@ impl MeshContainer {
                 remap[tri[0] as usize],
                 remap[tri[1] as usize],
                 remap[tri[2] as usize],
-            ) {
-                if i0 != i1 && i1 != i2 && i2 != i0 {
-                    new_indices.extend_from_slice(&[i0 as u32, i1 as u32, i2 as u32]);
-                }
+            ) && i0 != i1
+                && i1 != i2
+                && i2 != i0
+            {
+                new_indices.extend_from_slice(&[i0 as u32, i1 as u32, i2 as u32]);
             }
         }
 

@@ -1,13 +1,13 @@
 use std::{
     ffi::OsString,
     fs::File,
-    io::{self, BufWriter, Write},
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, mpsc},
 };
 
 use image::ImageReader;
-use three_d_asset::{Positions, Vec2, Vec3, material};
+use three_d_asset::{Vec2, Vec3};
 
 use crate::messages;
 use crate::messages::ModelLoadTask;
@@ -146,13 +146,13 @@ fn write_mtllib(
     dest: PathBuf,
     materials: &[&tobj::Material],
 ) {
-    let mut file = File::create(dest).expect("Couldnt create file");
+    let file = File::create(dest).expect("Couldnt create file");
     let mut file_buf = BufWriter::new(file);
 
     write_header(&mut file_buf);
 
     for material in materials {
-        writeln!(file_buf, "").expect("Failed to write mesh");
+        writeln!(file_buf).expect("Failed to write mesh");
         writeln!(file_buf, "newmtl {}", material.name).expect("Failed to write mesh");
         if let Some(ka) = material.ambient {
             writeln!(file_buf, "Ka {} {} {}", ka[0], ka[1], ka[2]).expect("Failed to write mesh");
@@ -198,7 +198,7 @@ impl WriteToFolder for Model {
         let mut dest_mtl = dest.clone();
         dest_mtl.set_extension("mtl");
 
-        let mut out_obj_file = File::create(dest).expect("Unable to create file");
+        let out_obj_file = File::create(dest).expect("Unable to create file");
         let mut out_obj_writer = BufWriter::new(out_obj_file);
 
         write_header(&mut out_obj_writer);
@@ -209,7 +209,7 @@ impl WriteToFolder for Model {
             dest_mtl.file_name().unwrap().to_string_lossy()
         )
         .expect("Failed to write mesh");
-        writeln!(out_obj_writer, "").expect("Failed to write mesh");
+        writeln!(out_obj_writer).expect("Failed to write mesh");
 
         let mut vertices = vec![];
         let mut uvs: Vec<Vec2> = vec![];
@@ -219,11 +219,11 @@ impl WriteToFolder for Model {
             vertices.extend_from_slice(&mesh.mesh.positions.to_f32());
 
             if let Some(mesh_uvs) = &mesh.mesh.uvs {
-                uvs.extend_from_slice(&mesh_uvs);
+                uvs.extend_from_slice(mesh_uvs);
             }
 
             if let Some(mesh_normals) = &mesh.mesh.normals {
-                normals.extend_from_slice(&mesh_normals);
+                normals.extend_from_slice(mesh_normals);
             }
         }
 
