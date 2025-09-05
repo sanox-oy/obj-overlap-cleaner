@@ -28,7 +28,7 @@ pub fn model_load_runner(
             Ok(task) => match task {
                 ModelLoadTask::Task(task) => {
                     let path = task.path;
-                    let model = Model::try_new_from_file(path.clone(), true, false)
+                    let model = Model::try_new_from_file(path.clone(), true, false, 2)
                         .unwrap_or_else(|_| panic!("Failed loading model from {path:?}"));
 
                     println!("Successfully loaded model from: {path:?}");
@@ -138,6 +138,7 @@ fn write_mtllib(
     dest_folder: &Path,
     dest: PathBuf,
     materials: &[&tobj::Material],
+    texture_downscale_factor: u32,
 ) {
     let file = File::create(dest).expect("Couldnt create file");
     let mut file_buf = BufWriter::new(file);
@@ -166,7 +167,7 @@ fn write_mtllib(
             writeln!(file_buf, "map_Kd {}", map_kd).expect("Failed to write mesh");
 
             // Also process the texture
-            copy_texture(map_kd, source_folder, dest_folder, 2);
+            copy_texture(map_kd, source_folder, dest_folder, texture_downscale_factor);
         }
     }
 
@@ -270,7 +271,13 @@ impl WriteToFolder for Model {
 
         // Write materials
         let materials = self.meshes.iter().map(|m| &m.material).collect::<Vec<_>>();
-        write_mtllib(source_folder, dest_folder.as_path(), dest_mtl, &materials);
+        write_mtllib(
+            source_folder,
+            dest_folder.as_path(),
+            dest_mtl,
+            &materials,
+            self.texture_downscale_factor,
+        );
     }
 }
 

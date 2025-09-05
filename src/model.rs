@@ -347,6 +347,7 @@ pub struct Model {
     pub meshes: Vec<MeshContainer>,
     pub aabb: AxisAlignedBoundingBox,
     pub source_file: OsString,
+    pub texture_downscale_factor: u32,
 }
 
 impl Model {
@@ -354,6 +355,7 @@ impl Model {
         path: OsString,
         calc_edge_len: bool,
         init_index_grid: bool,
+        texture_downscale_factor: u32,
     ) -> Result<Self, tobj::LoadError> {
         let (tri_meshes, materials) = try_load_and_process_obj(&path)?;
 
@@ -374,6 +376,7 @@ impl Model {
             meshes,
             aabb,
             source_file: path,
+            texture_downscale_factor,
         })
     }
 
