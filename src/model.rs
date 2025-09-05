@@ -11,7 +11,7 @@ use tobj::{Material as TobjMaterial, Mesh as TobjMesh};
 
 use crate::grid::IndexGrid;
 
-const EPSILON: f64 = 1e-9;
+const EPSILON: f64 = 1e-8;
 
 fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
     let uvs = if !mesh.texcoords.is_empty() {
@@ -71,19 +71,10 @@ fn try_load_and_process_obj(
 }
 
 fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: f32) -> bool {
-    //    let index_grid = mesh_container.index_grid.as_ref().unwrap();
-    //
-    //    // TODO: Expand with contents of neighboring cells if closer than threshold to boundary
-    //    let Some(indices) = index_grid.get_indices(vertex.x, vertex.y, vertex.z) else {
-    //        return false;
-    //    };
+    let index_grid = mesh_container.index_grid.as_ref().unwrap();
+    let indices = index_grid.get_indices(vertex, threshold);
 
     let vertex: Vector3<f64> = vertex.map(|x| x as f64);
-
-    let indices = match &mesh_container.mesh.indices {
-        Indices::U32(indices) => indices,
-        _ => panic!("Indices not U32"),
-    };
 
     let vertices = match &mesh_container.mesh.positions {
         Positions::F32(vertices) => vertices,
