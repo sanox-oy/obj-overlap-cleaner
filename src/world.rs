@@ -2,6 +2,7 @@ use std::{
     ffi::OsString,
     sync::{Arc, Mutex, RwLock, mpsc},
     thread,
+    time::Instant,
 };
 
 use crate::{
@@ -32,6 +33,14 @@ fn hq_asset_worker(
         drop(files);
 
         let hq_asset = Model::try_new_from_file(hq_asset_path.clone(), false, true, 1).unwrap();
+
+        let hq_asset_name = hq_asset.source_file.clone();
+        let start_time = Instant::now();
+
+        println!(
+            "Starting to process hq-asset {:?} against normal assets.",
+            hq_asset_name
+        );
 
         for normal_asset in normal_assets.iter() {
             let asset_clone = normal_asset.clone();
@@ -64,6 +73,10 @@ fn hq_asset_worker(
             }
         }
 
+        let duration = (Instant::now() - start_time).as_millis();
+
+        println!("Processed hq-asset: {:?} in {} ms", hq_asset_name, duration);
+
         let hq_asset_ref = ModelReference::from_model(hq_asset, 1);
         let mut write_hq_asset_ref_lock = write_hq_asset_ref.lock().unwrap();
         write_hq_asset_ref_lock.push(hq_asset_ref);
@@ -84,9 +97,10 @@ fn mark_and_delete_vertices_worker(
 
         drop(assets_lock);
 
-        //let mut model = Arc::try_unwrap(model).unwrap().into_inner().unwrap();
+        let start_time = Instant::now();
+        let model_file = model.source_file.clone();
+        println!("Deleting overlapping vertices for {:?}", model_file);
 
-        //let mut model_write = model.write().unwrap();
         model.mark_vertices_to_delete();
 
         if model.to_be_deleted() {
@@ -104,6 +118,13 @@ fn mark_and_delete_vertices_worker(
 
         let mut results_lock = results.lock().unwrap();
         results_lock.push(OutAsset::Asset(model));
+
+        let duration = (Instant::now() - start_time).as_millis();
+
+        println!(
+            "Deleted overlapping vertices for {:?} in {} msec",
+            model_file, duration
+        );
     }
 }
 
@@ -117,7 +138,6 @@ fn write_to_folder_worker(out_assets: Arc<Mutex<Vec<OutAsset>>>, dest_folder: &O
                 None => return,
             }
         };
-
         out_asset.write_to_folder(dest_folder);
     }
 }
@@ -252,6 +272,7 @@ impl WorldAssets {
     }
 
     pub fn write_to_folder(&mut self, dest: &OsString) {
+        println!("Writing results to: {:?}", dest);
         let out_assets = std::mem::take(&mut self.out_assets);
 
         let mut handles = Vec::new();

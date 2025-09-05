@@ -33,22 +33,12 @@ pub fn model_load_runner(
 
                     println!("Successfully loaded model from: {path:?}");
 
-                    for (idx, mesh) in model.meshes.iter().enumerate() {
-                        println!(
-                            "Mesh {idx} has {} vertices and {:?} indices, uvs: {}",
-                            mesh.mesh.positions.len(),
-                            mesh.mesh.indices.len(),
-                            mesh.mesh.uvs.as_ref().unwrap().len(),
-                        );
-                    }
-
                     tx.send(messages::ModelLoadTaskResponse::Model(
                         messages::ModelContainer { model },
                     ))
                     .expect("Failed to send result");
                 }
                 ModelLoadTask::Terminate => {
-                    println!("Model load runner done");
                     tx.send(messages::ModelLoadTaskResponse::Terminated)
                         .expect("Failed to send result");
                     return;
