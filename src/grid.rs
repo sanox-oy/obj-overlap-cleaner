@@ -32,15 +32,15 @@ impl IndexGrid {
         let y = (y * GRID_RESOLUTION as f32) as i32;
         let z = (z * GRID_RESOLUTION as f32) as i32;
 
-        self.indices.entry(x).or_insert_with(|| HashMap::new());
+        self.indices.entry(x).or_default();
 
         let yz = self.indices.get_mut(&x).unwrap();
 
-        yz.entry(y).or_insert_with(|| HashMap::new());
+        yz.entry(y).or_default();
 
         let z_indices = yz.get_mut(&y).unwrap();
 
-        z_indices.entry(z).or_insert_with(|| vec![]);
+        z_indices.entry(z).or_default();
 
         let indices = z_indices.get_mut(&z).unwrap();
         indices.push(index);
