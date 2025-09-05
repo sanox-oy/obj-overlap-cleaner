@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.99"
 clap = { version = "4.5.46", features = ["derive"] }
+image = { version = "0.25.8", features = ["png"] }
 three-d-asset = { git = "https://github.com/santerioksanen/three-d-asset.git", branch = "feature/intersect-return-option" }
 tobj = "4.0.3"

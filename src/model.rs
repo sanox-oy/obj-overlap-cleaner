@@ -155,7 +155,7 @@ pub struct MeshContainer {
 
 impl MeshContainer {
     fn modified(&self) -> bool {
-        self.to_be_deleted || self.overlapping_vertice_idxs.is_empty()
+        self.to_be_deleted || !self.overlapping_vertice_idxs.is_empty()
     }
 
     pub fn new(
@@ -222,9 +222,10 @@ impl MeshContainer {
                 Positions::F32(vertices) => {
                     for (idx, vertex) in vertices.iter().enumerate() {
                         if intersection.is_inside(*vertex)
-                            && vertex_overlapping(vertex, other, threshold) {
-                                overlapping.push(idx);
-                            }
+                            && vertex_overlapping(vertex, other, threshold)
+                        {
+                            overlapping.push(idx);
+                        }
                     }
                 }
                 _ => panic!("Positions are not F32"),

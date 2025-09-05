@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, Mutex, mpsc},
 };
 
+use image::ImageReader;
+
 use crate::messages;
 use crate::messages::ModelLoadTask;
 use crate::model::{Model, ModelReference, OutAsset};
@@ -57,9 +59,10 @@ pub fn scan_folder_for_objs(folder: &OsString) -> impl Iterator<Item = OsString>
             let p = entry.unwrap().path();
 
             if let Some(extension) = p.extension()
-                && extension.eq_ignore_ascii_case("obj") {
-                    return Some(p.into_os_string());
-                }
+                && extension.eq_ignore_ascii_case("obj")
+            {
+                return Some(p.into_os_string());
+            }
         }
     })
 }
@@ -91,12 +94,14 @@ impl WriteToFolder for Model {
 impl WriteToFolder for ModelReference {
     fn write_to_folder(&self, folder: &OsString) {
         let source = std::path::PathBuf::from(self.source_file.clone());
+        let source_folder = source.parent().expect("File doesnt have parent path");
         let filename = source.file_name().expect("No filename");
 
         let mut source_mtl = source.clone();
         source_mtl.set_extension("mtl");
 
-        let dest = std::path::PathBuf::from(folder).join(filename);
+        let dest_folder = std::path::PathBuf::from(folder);
+        let dest = dest_folder.clone().join(filename);
 
         if source_mtl.exists() {
             let mut dest_mtl = dest.clone();
@@ -105,7 +110,49 @@ impl WriteToFolder for ModelReference {
         }
 
         println!("Copying from: {source:?}, to: {dest:?}");
-        std::fs::copy(source, dest).expect("Failed to copy");
+        std::fs::copy(&source, &dest).expect("Failed to copy");
+
+        for material in &self.materials {
+            let textures = vec![
+                &material.diffuse_texture,
+                &material.ambient_texture,
+                &material.dissolve_texture,
+                &material.specular_texture,
+                &material.normal_texture,
+                &material.shininess_texture,
+            ];
+
+            for texture in textures {
+                if let Some(texture_file) = texture {
+                    let texture_src = source_folder.join(texture_file.clone());
+                    let texture_dst = dest_folder.clone().join(texture_file.clone());
+                    if texture_dst.exists() {
+                        continue;
+                    }
+
+                    if !texture_src.exists() {
+                        panic!("Unable to load texture: {texture_src:?}");
+                    }
+
+                    if self.texture_downscale_factor == 1 {
+                        std::fs::copy(texture_src, texture_dst).expect("Failed to copy texture");
+                    } else {
+                        let mut img = ImageReader::open(texture_src)
+                            .expect("Couldnt open image")
+                            .decode()
+                            .expect("Couldnt decode image");
+
+                        let resized = img.resize_exact(
+                            img.width() / self.texture_downscale_factor,
+                            img.height() / self.texture_downscale_factor,
+                            image::imageops::FilterType::Triangle,
+                        );
+
+                        resized.save(texture_dst).expect("Couldnt save image");
+                    }
+                }
+            }
+        }
     }
 }
 
