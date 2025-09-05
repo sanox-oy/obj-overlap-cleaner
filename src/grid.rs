@@ -3,6 +3,7 @@ use three_d_asset::{Indices, Positions, TriMesh};
 
 const GRID_RESOLUTION: u32 = 10;
 
+#[derive(Debug)]
 pub struct IndexGrid {
     indices: HashMap<i32, HashMap<i32, HashMap<i32, Vec<u32>>>>,
 }

@@ -1,5 +1,8 @@
 use core::f32;
-use std::ffi::{OsStr, OsString};
+use std::{
+    collections::HashSet,
+    ffi::{OsStr, OsString},
+};
 
 use three_d_asset::{
     AxisAlignedBoundingBox, Indices, InnerSpace, MetricSpace, Positions, TriMesh, Vec3, Vector2,
@@ -124,6 +127,14 @@ fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: 
     false
 }
 
+#[derive(Debug)]
+pub struct ModelReference {
+    pub source_file: OsString,
+    pub materials: Vec<TobjMaterial>,
+    pub texture_downscale_factor: u32,
+}
+
+#[derive(Debug)]
 pub struct MeshContainer {
     mesh: TriMesh,
     aabb: AxisAlignedBoundingBox,
@@ -138,7 +149,7 @@ pub struct MeshContainer {
     /// List of indices that are to be deleted.
     /// Created from overlapping_vertice_idxs, where
     /// those that are on the edge are removed (i.e. has neigbors that are non-overlapping)
-    indices_to_delete: Vec<usize>,
+    indices_to_delete: HashSet<usize>,
     index_grid: Option<IndexGrid>,
 }
 
@@ -194,7 +205,7 @@ impl MeshContainer {
             overlapping_vertice_idxs: vec![],
             to_be_deleted: false,
             mean_edge_len,
-            indices_to_delete: vec![],
+            indices_to_delete: HashSet::new(),
             index_grid,
         }
     }
@@ -236,10 +247,77 @@ impl MeshContainer {
             return;
         }
 
-        println!("Part of mesh to be deleted");
+        let indices = match &self.mesh.indices {
+            Indices::U32(indices) => indices,
+            _ => panic!("Indices not U32"),
+        };
+
+        let mut indices_to_delete =
+            HashSet::from_iter(self.overlapping_vertice_idxs.iter().cloned());
+
+        // Iterate over each triangle
+        for t_indices in indices.chunks_exact(3) {
+            // If all or none are overlapping, just continue
+            let overlapping = t_indices
+                .iter()
+                .map(|i| indices_to_delete.contains(&(*i as usize)))
+                .collect::<Vec<_>>();
+
+            if overlapping.iter().all(|v| *v) || overlapping.iter().all(|v| !*v) {
+                continue;
+            }
+
+            // The remaining case is so that they have non-overlapping neighbors
+            for (idx, overlaps) in overlapping.iter().enumerate() {
+                if *overlaps {
+                    indices_to_delete.remove(&(t_indices[idx] as usize));
+                }
+            }
+        }
+
+        self.indices_to_delete = indices_to_delete;
+    }
+
+    fn do_delete_vertices(&mut self) {
+        let mut vertices = self.mesh.positions.to_f32();
+        let mut indices = self.mesh.indices.to_u32().unwrap();
+
+        let mut vertices_to_delete = Vec::from_iter(self.indices_to_delete.iter().cloned());
+        vertices_to_delete.sort();
+
+        for idx in vertices_to_delete.iter().rev() {
+            let mut t_indices_to_remove = vec![];
+
+            // First remove the vertex
+            vertices.remove(*idx);
+
+            // Then remove the triangle
+            for (i, t_indices) in indices.chunks_exact(3).enumerate() {
+                if t_indices.iter().any(|e| *e == *idx as u32) {
+                    t_indices_to_remove.push(1);
+                }
+            }
+
+            for t_index in t_indices_to_remove.iter().rev() {
+                indices.remove(*t_index * 3 + 2);
+                indices.remove(*t_index * 3 + 1);
+                indices.remove(*t_index);
+            }
+
+            // Then subtract one from all indices that are > then idx
+            for index in indices.iter_mut() {
+                if *index > *idx as u32 {
+                    *index -= 1;
+                }
+            }
+        }
+
+        self.mesh.positions = Positions::F32(vertices);
+        self.mesh.indices = Indices::U32(indices);
     }
 }
 
+#[derive(Debug)]
 pub struct Model {
     pub meshes: Vec<MeshContainer>,
     pub aabb: AxisAlignedBoundingBox,
@@ -283,6 +361,46 @@ impl Model {
             mesh.mark_vertices_to_delete();
         }
     }
+
+    pub fn do_delete_vertices(&mut self) {
+        let mut meshes_to_delete = vec![];
+
+        for (idx, mesh) in self.meshes.iter_mut().enumerate() {
+            if mesh.to_be_deleted {
+                meshes_to_delete.push(idx);
+                continue;
+            }
+            mesh.do_delete_vertices();
+        }
+
+        for idx in meshes_to_delete.iter().rev() {
+            self.meshes.remove(*idx);
+        }
+    }
+
+    pub fn to_be_deleted(&self) -> bool {
+        self.meshes.iter().all(|m| m.to_be_deleted)
+    }
+}
+
+impl ModelReference {
+    pub fn from_model(model: Model, texture_downscale_factor: u32) -> Self {
+        let materials = model
+            .meshes
+            .into_iter()
+            .map(|m| m.material)
+            .collect::<Vec<_>>();
+        Self {
+            materials,
+            texture_downscale_factor,
+            source_file: model.source_file,
+        }
+    }
+}
+
+pub enum OutAsset {
+    AssetRef(ModelReference),
+    Asset(Model),
 }
 
 #[cfg(test)]

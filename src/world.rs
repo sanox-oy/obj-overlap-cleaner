@@ -4,19 +4,23 @@ use std::{
     thread,
 };
 
-use crate::Model;
+use crate::{
+    io::WriteToFolder,
+    model::{Model, ModelReference, OutAsset},
+};
 use three_d_asset::AxisAlignedBoundingBox;
 
 pub struct WorldAssets {
     pub hq_asset_files: Vec<OsString>,
     pub normal_assets: Arc<Vec<Arc<RwLock<Model>>>>,
-    out_assets: Vec<Model>,
+    out_assets: Vec<OutAsset>,
     num_threads: usize,
 }
 
 fn hq_asset_worker(
     mut hq_asset_files: Arc<Mutex<Vec<OsString>>>,
     mut normal_assets: Arc<Vec<Arc<RwLock<Model>>>>,
+    mut write_hq_asset_ref: Arc<Mutex<Vec<ModelReference>>>,
 ) {
     loop {
         let mut files = hq_asset_files.lock().unwrap();
@@ -31,7 +35,7 @@ fn hq_asset_worker(
 
         drop(files);
 
-        let hq_asset = crate::Model::try_new_from_file(hq_asset_path.clone(), false, true).unwrap();
+        let hq_asset = Model::try_new_from_file(hq_asset_path.clone(), false, true).unwrap();
 
         for normal_asset in normal_assets.iter() {
             let asset_clone = normal_asset.clone();
@@ -63,6 +67,10 @@ fn hq_asset_worker(
                 }
             }
         }
+
+        let hq_asset_ref = ModelReference::from_model(hq_asset, 1);
+        let mut write_hq_asset_ref_lock = write_hq_asset_ref.lock().unwrap();
+        write_hq_asset_ref_lock.push(hq_asset_ref);
     }
 }
 
@@ -99,7 +107,9 @@ impl WorldAssets {
 
         // Create tasks to terminate workers
         for _ in 0..num_os_threads {
-            tx_task.send(crate::messages::ModelLoadTask::Terminate);
+            tx_task
+                .send(crate::messages::ModelLoadTask::Terminate)
+                .expect("Failed to send task");
         }
 
         let mut normal_assets = vec![];
@@ -132,22 +142,29 @@ impl WorldAssets {
 
     pub fn process_overlaps(&mut self) {
         let process_queue = Arc::new(Mutex::new(self.hq_asset_files.clone()));
+        let hq_asset_references: Arc<Mutex<Vec<crate::model::ModelReference>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         let mut workers = vec![];
 
         for _ in 0..self.num_threads {
             let mut normal_assets = self.normal_assets.clone();
             let mut hq_assets = process_queue.clone();
+            let mut hq_asset_references_clone = hq_asset_references.clone();
 
             workers.push(thread::spawn(move || {
-                hq_asset_worker(hq_assets, normal_assets)
+                hq_asset_worker(hq_assets, normal_assets, hq_asset_references_clone)
             }));
         }
 
         // wait for threads to finish
         for t in workers {
-            t.join();
+            t.join().expect("Failed to join thread");
         }
+
+        let mut hq_asset_references_lock = hq_asset_references.lock().unwrap();
+        self.out_assets
+            .extend(hq_asset_references_lock.drain(..).map(OutAsset::AssetRef));
 
         for hq_asset in self.hq_asset_files.iter() {
             println!("Threads done, {hq_asset:?}");
@@ -158,6 +175,35 @@ impl WorldAssets {
         for model in self.normal_assets.iter() {
             let mut model_write = model.write().unwrap();
             model_write.mark_vertices_to_delete();
+        }
+    }
+
+    pub fn do_delete_vertices(&mut self) {
+        let normal_assets = Arc::try_unwrap(std::mem::take(&mut self.normal_assets)).unwrap();
+
+        for model_guarded in normal_assets {
+            let mut model = Arc::try_unwrap(model_guarded)
+                .expect("Still references")
+                .into_inner()
+                .unwrap();
+            if model.to_be_deleted() {
+                continue;
+            }
+
+            if !model.modified() {
+                let model_ref = ModelReference::from_model(model, 2);
+                self.out_assets.push(OutAsset::AssetRef(model_ref));
+                continue;
+            }
+
+            model.do_delete_vertices();
+            self.out_assets.push(OutAsset::Asset(model));
+        }
+    }
+
+    pub fn write_to_folder(&self, dest: &OsString) {
+        for out_asset in &self.out_assets {
+            out_asset.write_to_folder(dest);
         }
     }
 }

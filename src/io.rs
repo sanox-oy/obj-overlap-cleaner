@@ -1,10 +1,12 @@
 use std::{
     ffi::OsString,
+    path,
     sync::{Arc, Mutex, mpsc},
 };
 
+use crate::messages;
 use crate::messages::ModelLoadTask;
-use crate::{Model, messages};
+use crate::model::{Model, ModelReference, OutAsset};
 
 pub fn model_load_runner(
     rx: Arc<Mutex<mpsc::Receiver<ModelLoadTask>>>,
@@ -30,11 +32,13 @@ pub fn model_load_runner(
                             model,
                             asset_type: task.asset_type,
                         },
-                    ));
+                    ))
+                    .expect("Failed to send result");
                 }
                 ModelLoadTask::Terminate => {
                     println!("Model load runner done");
-                    tx.send(messages::ModelLoadTaskResponse::Terminated);
+                    tx.send(messages::ModelLoadTaskResponse::Terminated)
+                        .expect("Failed to send result");
                     return;
                 }
             },
@@ -75,5 +79,43 @@ pub fn scan_folder_and_create_tasks(
             },
         ))
         .expect("Error while sending task");
+    }
+}
+
+pub trait WriteToFolder {
+    fn write_to_folder(&self, folder: &OsString);
+}
+
+impl WriteToFolder for Model {
+    fn write_to_folder(&self, folder: &OsString) {}
+}
+
+impl WriteToFolder for ModelReference {
+    fn write_to_folder(&self, folder: &OsString) {
+        let source = std::path::PathBuf::from(self.source_file.clone());
+        let filename = source.file_name().expect("No filename");
+
+        let mut source_mtl = source.clone();
+        source_mtl.set_extension("mtl");
+
+        let dest = std::path::PathBuf::from(folder).join(filename);
+
+        if source_mtl.exists() {
+            let mut dest_mtl = dest.clone();
+            dest_mtl.set_extension("mtl");
+            std::fs::copy(source_mtl, dest_mtl).expect("Failed to copy");
+        }
+
+        println!("Copying from: {source:?}, to: {dest:?}");
+        std::fs::copy(source, dest).expect("Failed to copy");
+    }
+}
+
+impl WriteToFolder for OutAsset {
+    fn write_to_folder(&self, folder: &OsString) {
+        match &self {
+            &OutAsset::Asset(model) => model.write_to_folder(folder),
+            &OutAsset::AssetRef(model_ref) => model_ref.write_to_folder(folder),
+        }
     }
 }
