@@ -38,8 +38,9 @@ fn main() {
 
     println!("Finding non-overlapping models");
     assets.process_overlaps();
-    assets.mark_vertices_to_delete();
-    assets.do_delete_vertices();
+    //assets.mark_vertices_to_delete();
+    assets.mark_and_delete_vertices();
+    //assets.do_delete_vertices();
     assets.write_to_folder(&args.out_folder);
 
     let duration = (Instant::now() - start_time).as_secs();

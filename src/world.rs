@@ -26,10 +26,7 @@ fn hq_asset_worker(
 
         let hq_asset_path = match files.pop() {
             Some(asset) => asset,
-            None => {
-                println!("Thread done!");
-                return;
-            }
+            None => return,
         };
 
         drop(files);
@@ -70,6 +67,58 @@ fn hq_asset_worker(
         let hq_asset_ref = ModelReference::from_model(hq_asset, 1);
         let mut write_hq_asset_ref_lock = write_hq_asset_ref.lock().unwrap();
         write_hq_asset_ref_lock.push(hq_asset_ref);
+    }
+}
+
+fn mark_and_delete_vertices_worker(
+    assets: Arc<Mutex<Vec<Model>>>,
+    results: Arc<Mutex<Vec<OutAsset>>>,
+) {
+    loop {
+        let mut assets_lock = assets.lock().unwrap();
+
+        let mut model = match assets_lock.pop() {
+            Some(model) => model,
+            None => return,
+        };
+
+        drop(assets_lock);
+
+        //let mut model = Arc::try_unwrap(model).unwrap().into_inner().unwrap();
+
+        //let mut model_write = model.write().unwrap();
+        model.mark_vertices_to_delete();
+
+        if model.to_be_deleted() {
+            continue;
+        }
+
+        if !model.modified() {
+            let model_ref = ModelReference::from_model(model, 2);
+            let mut results_lock = results.lock().unwrap();
+            results_lock.push(OutAsset::AssetRef(model_ref));
+            continue;
+        }
+
+        model.do_delete_vertices();
+
+        let mut results_lock = results.lock().unwrap();
+        results_lock.push(OutAsset::Asset(model));
+    }
+}
+
+fn write_to_folder_worker(out_assets: Arc<Mutex<Vec<OutAsset>>>, dest_folder: &OsString) {
+    loop {
+        let out_asset = {
+            let mut lock = out_assets.lock().unwrap();
+
+            match lock.pop() {
+                Some(out_asset) => out_asset,
+                None => return,
+            }
+        };
+
+        out_asset.write_to_folder(dest_folder);
     }
 }
 
@@ -165,39 +214,59 @@ impl WorldAssets {
         }
     }
 
-    pub fn mark_vertices_to_delete(&mut self) {
-        for model in self.normal_assets.iter() {
-            let mut model_write = model.write().unwrap();
-            model_write.mark_vertices_to_delete();
-        }
-    }
+    pub fn mark_and_delete_vertices(&mut self) {
+        let mut models = Vec::new();
+        let results: Arc<Mutex<Vec<OutAsset>>> = Arc::new(Mutex::new(Vec::new()));
 
-    pub fn do_delete_vertices(&mut self) {
         let normal_assets = Arc::try_unwrap(std::mem::take(&mut self.normal_assets)).unwrap();
 
         for model_guarded in normal_assets {
-            let mut model = Arc::try_unwrap(model_guarded)
+            let model = Arc::try_unwrap(model_guarded)
                 .expect("Still references")
                 .into_inner()
                 .unwrap();
-            if model.to_be_deleted() {
-                continue;
-            }
 
-            if !model.modified() {
-                let model_ref = ModelReference::from_model(model, 2);
-                self.out_assets.push(OutAsset::AssetRef(model_ref));
-                continue;
-            }
-
-            model.do_delete_vertices();
-            self.out_assets.push(OutAsset::Asset(model));
+            models.push(model);
         }
+
+        let task_queue = Arc::new(Mutex::new(models));
+        let mut handles = Vec::new();
+
+        for _ in 0..self.num_threads {
+            let task_queue_clone = task_queue.clone();
+            let results_clone = results.clone();
+            handles.push(thread::spawn(move || {
+                mark_and_delete_vertices_worker(task_queue_clone, results_clone);
+            }))
+        }
+
+        for h in handles {
+            h.join().expect("Failed to join thread");
+        }
+
+        let mut results_unguarded = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
+
+        self.out_assets.append(&mut results_unguarded);
+
+        println!("Deleted all overlapping vertices");
     }
 
-    pub fn write_to_folder(&self, dest: &OsString) {
-        for out_asset in &self.out_assets {
-            out_asset.write_to_folder(dest);
+    pub fn write_to_folder(&mut self, dest: &OsString) {
+        let out_assets = std::mem::take(&mut self.out_assets);
+
+        let mut handles = Vec::new();
+        let tasks = Arc::new(Mutex::new(out_assets));
+
+        for _ in 0..self.num_threads {
+            let tasks_clone = tasks.clone();
+            let dest_clone = dest.clone();
+            handles.push(thread::spawn(move || {
+                write_to_folder_worker(tasks_clone, &dest_clone);
+            }));
+        }
+
+        for h in handles {
+            h.join().expect("Failed to join thread");
         }
     }
 }

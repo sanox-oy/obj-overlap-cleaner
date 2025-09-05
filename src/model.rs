@@ -11,7 +11,7 @@ use tobj::{Material as TobjMaterial, Mesh as TobjMesh};
 
 use crate::grid::IndexGrid;
 
-const EPSILON: f64 = 1e-8;
+const EPSILON: f64 = 1e-10;
 
 fn tobj_mesh_to_trimesh(mesh: TobjMesh) -> TriMesh {
     let uvs = if !mesh.texcoords.is_empty() {
@@ -97,9 +97,9 @@ fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: 
         // Expand the triangle slightly
         let center = (p0 + p1 + p2) / 3.0;
 
-        p0 += (p0 - center) * 0.15;
-        p1 += (p1 - center) * 0.15;
-        p2 += (p2 - center) * 0.15;
+        p0 += (p0 - center) * 0.2;
+        p1 += (p1 - center) * 0.2;
+        p2 += (p2 - center) * 0.2;
 
         // At this point the distance is already less than threshold.
         // Just check that the point lands within the triangle
@@ -426,6 +426,7 @@ impl ModelReference {
     }
 }
 
+#[derive(Debug)]
 pub enum OutAsset {
     AssetRef(ModelReference),
     Asset(Model),
