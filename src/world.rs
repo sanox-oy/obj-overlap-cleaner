@@ -8,7 +8,6 @@ use crate::{
     io::WriteToFolder,
     model::{Model, ModelReference, OutAsset},
 };
-use three_d_asset::AxisAlignedBoundingBox;
 
 pub struct WorldAssets {
     pub hq_asset_files: Vec<OsString>,
@@ -18,9 +17,9 @@ pub struct WorldAssets {
 }
 
 fn hq_asset_worker(
-    mut hq_asset_files: Arc<Mutex<Vec<OsString>>>,
-    mut normal_assets: Arc<Vec<Arc<RwLock<Model>>>>,
-    mut write_hq_asset_ref: Arc<Mutex<Vec<ModelReference>>>,
+    hq_asset_files: Arc<Mutex<Vec<OsString>>>,
+    normal_assets: Arc<Vec<Arc<RwLock<Model>>>>,
+    write_hq_asset_ref: Arc<Mutex<Vec<ModelReference>>>,
 ) {
     loop {
         let mut files = hq_asset_files.lock().unwrap();
@@ -43,7 +42,7 @@ fn hq_asset_worker(
 
             let mut overlaps: Vec<Vec<usize>> = vec![];
 
-            if let Some(_) = asset_read.aabb.intersection(hq_asset.aabb) {
+            if asset_read.aabb.intersection(hq_asset.aabb).is_some() {
                 for mesh in asset_read.meshes.iter() {
                     let mut mesh_overlaps = vec![];
 
@@ -148,9 +147,9 @@ impl WorldAssets {
         let mut workers = vec![];
 
         for _ in 0..self.num_threads {
-            let mut normal_assets = self.normal_assets.clone();
-            let mut hq_assets = process_queue.clone();
-            let mut hq_asset_references_clone = hq_asset_references.clone();
+            let normal_assets = self.normal_assets.clone();
+            let hq_assets = process_queue.clone();
+            let hq_asset_references_clone = hq_asset_references.clone();
 
             workers.push(thread::spawn(move || {
                 hq_asset_worker(hq_assets, normal_assets, hq_asset_references_clone)

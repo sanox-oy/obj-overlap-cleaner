@@ -24,7 +24,7 @@ impl IndexGrid {
         let z_indices = yz.get(&y)?;
         let indices = z_indices.get(&z)?;
 
-        Some(&indices)
+        Some(indices)
     }
 
     pub fn push_index(&mut self, x: f32, y: f32, z: f32, index: u32) {
@@ -32,21 +32,15 @@ impl IndexGrid {
         let y = (y * GRID_RESOLUTION as f32) as i32;
         let z = (z * GRID_RESOLUTION as f32) as i32;
 
-        if !self.indices.contains_key(&x) {
-            self.indices.insert(x, HashMap::new());
-        }
+        self.indices.entry(x).or_insert_with(|| HashMap::new());
 
         let yz = self.indices.get_mut(&x).unwrap();
 
-        if !yz.contains_key(&y) {
-            yz.insert(y, HashMap::new());
-        }
+        yz.entry(y).or_insert_with(|| HashMap::new());
 
         let z_indices = yz.get_mut(&y).unwrap();
 
-        if !z_indices.contains_key(&z) {
-            z_indices.insert(z, vec![]);
-        }
+        z_indices.entry(z).or_insert_with(|| vec![]);
 
         let indices = z_indices.get_mut(&z).unwrap();
         indices.push(index);

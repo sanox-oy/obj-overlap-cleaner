@@ -1,6 +1,5 @@
 use std::{
     ffi::OsString,
-    path,
     sync::{Arc, Mutex, mpsc},
 };
 
@@ -57,11 +56,10 @@ pub fn scan_folder_for_objs(folder: &OsString) -> impl Iterator<Item = OsString>
             let entry = read_dir.next()?;
             let p = entry.unwrap().path();
 
-            if let Some(extension) = p.extension() {
-                if extension.eq_ignore_ascii_case("obj") {
+            if let Some(extension) = p.extension()
+                && extension.eq_ignore_ascii_case("obj") {
                     return Some(p.into_os_string());
                 }
-            }
         }
     })
 }
@@ -113,9 +111,9 @@ impl WriteToFolder for ModelReference {
 
 impl WriteToFolder for OutAsset {
     fn write_to_folder(&self, folder: &OsString) {
-        match &self {
-            &OutAsset::Asset(model) => model.write_to_folder(folder),
-            &OutAsset::AssetRef(model_ref) => model_ref.write_to_folder(folder),
+        match self {
+            OutAsset::Asset(model) => model.write_to_folder(folder),
+            OutAsset::AssetRef(model_ref) => model_ref.write_to_folder(folder),
         }
     }
 }

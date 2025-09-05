@@ -221,17 +221,16 @@ impl MeshContainer {
             match &self.mesh.positions {
                 Positions::F32(vertices) => {
                     for (idx, vertex) in vertices.iter().enumerate() {
-                        if intersection.is_inside(*vertex) {
-                            if vertex_overlapping(vertex, other, threshold) {
+                        if intersection.is_inside(*vertex)
+                            && vertex_overlapping(vertex, other, threshold) {
                                 overlapping.push(idx);
                             }
-                        }
                     }
                 }
                 _ => panic!("Positions are not F32"),
             }
         }
-        return overlapping;
+        overlapping
     }
 
     /// Mark indices that are to be deleted
@@ -293,7 +292,7 @@ impl MeshContainer {
 
             // Then remove the triangle
             for (i, t_indices) in indices.chunks_exact(3).enumerate() {
-                if t_indices.iter().any(|e| *e == *idx as u32) {
+                if t_indices.contains(&(*idx as u32)) {
                     t_indices_to_remove.push(1);
                 }
             }
