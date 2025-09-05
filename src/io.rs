@@ -98,13 +98,13 @@ pub fn scan_folder_and_create_tasks(
 }
 
 fn copy_texture(
-    texture_file: &String,
+    texture_file: &str,
     source_folder: &Path,
     dest_folder: &Path,
     downscale_factor: u32,
 ) {
-    let texture_src = source_folder.join(texture_file.clone());
-    let texture_dst = dest_folder.join(texture_file.clone());
+    let texture_src = source_folder.join(texture_file);
+    let texture_dst = dest_folder.join(texture_file);
     if texture_dst.exists() {
         return;
     }
