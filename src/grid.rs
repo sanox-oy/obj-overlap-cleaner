@@ -45,17 +45,10 @@ impl IndexGrid {
     }
 
     fn extend(&mut self, p: Vector3<i32>, index_slice: &[u32]) {
-        self.indices.entry(p.x).or_default();
+        let yz = self.indices.entry(p.x).or_default();
+        let z_indices = yz.entry(p.y).or_default();
+        let indices = z_indices.entry(p.z).or_default();
 
-        let yz = self.indices.get_mut(&p.x).unwrap();
-
-        yz.entry(p.y).or_default();
-
-        let z_indices = yz.get_mut(&p.y).unwrap();
-
-        z_indices.entry(p.z).or_default();
-
-        let indices = z_indices.get_mut(&p.z).unwrap();
         indices.extend_from_slice(index_slice);
     }
 

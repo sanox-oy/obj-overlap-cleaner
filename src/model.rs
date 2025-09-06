@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, VecDeque},
     ffi::{OsStr, OsString},
 };
 
@@ -236,6 +236,81 @@ impl MeshContainer {
         overlapping
     }
 
+    /// Mark small islands as to delete.
+    fn mark_islands_as_overlapping(&mut self, threshold_cnt: usize) {
+        if self.overlapping_vertice_idxs.is_empty() {
+            return;
+        }
+
+        let indices = match &self.mesh.indices {
+            Indices::U32(indices) => indices,
+            _ => panic!("Indices not U32"),
+        };
+
+        // Key has index of vert, value is vec of neigboring keys
+        let mut adjacency_graph: HashMap<usize, Vec<usize>> = HashMap::new();
+
+        // Build adjacency graph. Only include indices, which have not yet been
+        // excluded
+        for tri in indices.chunks_exact(3) {
+            for i in 0..3 {
+                let i0 = tri[i] as usize;
+                let i1 = tri[(i + 1) % 3] as usize;
+                let i2 = tri[(i + 2) % 3] as usize;
+                if !self.overlapping_vertice_idxs.contains(&i0) {
+                    let neigbors = adjacency_graph.entry(i0).or_default();
+                    if !self.overlapping_vertice_idxs.contains(&i1) {
+                        neigbors.push(i1);
+                    }
+                    if !self.overlapping_vertice_idxs.contains(&i2) {
+                        neigbors.push(i2);
+                    }
+                }
+            }
+        }
+
+        let mut visited_indices: HashSet<usize> = HashSet::new();
+
+        for index in indices.iter() {
+            let index: usize = *index as usize;
+
+            if visited_indices.contains(&index) || self.overlapping_vertice_idxs.contains(&index) {
+                continue;
+            }
+
+            let mut cur_mesh_indices = Vec::new();
+            let mut queue = VecDeque::new();
+            queue.push_back(index);
+
+            while let Some(index) = queue.pop_front() {
+                if visited_indices.contains(&index) {
+                    continue;
+                }
+
+                visited_indices.insert(index);
+                cur_mesh_indices.push(index);
+
+                let neighbors = adjacency_graph
+                    .get(&index)
+                    .expect("Node should have neighbors");
+                for neighbor in neighbors.iter() {
+                    if !visited_indices.contains(neighbor)
+                        && !self.overlapping_vertice_idxs.contains(neighbor)
+                    {
+                        queue.push_back(*neighbor);
+                    }
+                }
+            }
+
+            if cur_mesh_indices.len() < threshold_cnt {
+                self.overlapping_vertice_idxs
+                    .extend(cur_mesh_indices.iter());
+            }
+        }
+
+        println!("Marked island vertices");
+    }
+
     /// Mark indices that are to be deleted
     /// If all are deleted, rather set to_be_deleted to true
     fn mark_vertices_to_delete(&mut self) {
@@ -393,6 +468,12 @@ impl Model {
     pub fn mark_vertices_to_delete(&mut self) {
         for mesh in self.meshes.iter_mut() {
             mesh.mark_vertices_to_delete();
+        }
+    }
+
+    pub fn mark_islands_as_overlapping(&mut self, threshold_cnt: usize) {
+        for mesh in self.meshes.iter_mut() {
+            mesh.mark_islands_as_overlapping(threshold_cnt);
         }
     }
 

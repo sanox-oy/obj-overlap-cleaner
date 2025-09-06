@@ -102,6 +102,7 @@ fn mark_and_delete_vertices_worker(
         println!("Deleting overlapping vertices for {:?}", model_file);
 
         model.mark_vertices_to_delete();
+        model.mark_islands_as_overlapping(15);
 
         if model.to_be_deleted() {
             continue;
