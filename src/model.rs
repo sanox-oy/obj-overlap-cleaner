@@ -97,9 +97,9 @@ fn vertex_overlapping(vertex: &Vec3, mesh_container: &MeshContainer, threshold: 
         // Expand the triangle slightly
         let center = (p0 + p1 + p2) / 3.0;
 
-        p0 += (p0 - center) * 0.2;
-        p1 += (p1 - center) * 0.2;
-        p2 += (p2 - center) * 0.2;
+        p0 += (p0 - center) * 0.5;
+        p1 += (p1 - center) * 0.5;
+        p2 += (p2 - center) * 0.5;
 
         // At this point the distance is already less than threshold.
         // Just check that the point lands within the triangle
@@ -214,7 +214,7 @@ impl MeshContainer {
     /// Calculates vertice indices from self, which are overlapping with other
     pub fn calc_overlapping_vertice_idxs(&self, other: &Self) -> Vec<usize> {
         let mut overlapping = vec![];
-        let threshold = 4.0
+        let threshold = 10.0
             * self
                 .mean_edge_len
                 .expect("Trying to calculate overlapping without mean edge len");
@@ -268,6 +268,12 @@ impl MeshContainer {
                 .collect::<Vec<_>>();
 
             if overlapping.iter().all(|v| *v) || overlapping.iter().all(|v| !*v) {
+                continue;
+            }
+
+            let overlapping_cnt = overlapping.iter().map(|o| *o as u32).sum::<u32>();
+
+            if overlapping_cnt < 2 {
                 continue;
             }
 
@@ -436,6 +442,26 @@ pub enum OutAsset {
 mod tests {
     use super::*;
 
+    fn create_empty_material() -> tobj::Material {
+        tobj::Material {
+            name: "Test".to_string(),
+            ambient: None,
+            diffuse: None,
+            specular: None,
+            shininess: None,
+            dissolve: None,
+            optical_density: None,
+            ambient_texture: None,
+            diffuse_texture: None,
+            specular_texture: None,
+            normal_texture: None,
+            shininess_texture: None,
+            dissolve_texture: None,
+            illumination_model: None,
+            unknown_param: ahash::AHashMap::new(),
+        }
+    }
+
     #[test]
     fn test_directly_above_outside_threshold() {
         let trimesh = TriMesh {
@@ -451,9 +477,11 @@ mod tests {
             colors: None,
         };
 
+        let container = MeshContainer::new(trimesh, create_empty_material(), false, true);
+
         let vertex = Vec3::new(0.0, 0.0, 1.1);
 
-        let result = vertex_overlapping(&vertex, &trimesh, 1.0);
+        let result = vertex_overlapping(&vertex, &container, 1.0);
         assert_eq!(result, false);
     }
 
@@ -474,7 +502,9 @@ mod tests {
 
         let vertex = Vec3::new(0.0, 0.0, 1.0);
 
-        let result = vertex_overlapping(&vertex, &trimesh, 1.0);
+        let container = MeshContainer::new(trimesh, create_empty_material(), false, true);
+
+        let result = vertex_overlapping(&vertex, &container, 1.0);
         assert_eq!(result, true);
     }
 
@@ -495,7 +525,9 @@ mod tests {
 
         let vertex = Vec3::new(0.0, 0.0, -1.1);
 
-        let result = vertex_overlapping(&vertex, &trimesh, 1.0);
+        let container = MeshContainer::new(trimesh, create_empty_material(), false, true);
+
+        let result = vertex_overlapping(&vertex, &container, 1.0);
         assert_eq!(result, false);
     }
 
@@ -516,7 +548,9 @@ mod tests {
 
         let vertex = Vec3::new(0.0, 0.0, -1.0);
 
-        let result = vertex_overlapping(&vertex, &trimesh, 1.0);
+        let container = MeshContainer::new(trimesh, create_empty_material(), false, true);
+
+        let result = vertex_overlapping(&vertex, &container, 1.0);
         assert_eq!(result, true);
     }
 }

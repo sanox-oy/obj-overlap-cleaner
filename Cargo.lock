@@ -726,6 +726,7 @@ dependencies = [
 name = "obj-overlap-cleaner"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "clap",
  "image",
