@@ -68,7 +68,7 @@ fn hq_asset_worker(
                 for (idx, overlap) in overlaps.iter().enumerate() {
                     asset_write.meshes[idx]
                         .overlapping_vertice_idxs
-                        .extend_from_slice(overlap);
+                        .extend(overlap);
                 }
             }
         }

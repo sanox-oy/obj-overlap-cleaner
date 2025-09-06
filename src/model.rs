@@ -142,7 +142,7 @@ pub struct MeshContainer {
     pub material: TobjMaterial,
     /// List of indices of vertices that are overlapping with other
     /// models
-    pub overlapping_vertice_idxs: Vec<usize>,
+    pub overlapping_vertice_idxs: HashSet<usize>,
     /// Indicates whether this mesh is totally overlapping
     to_be_deleted: bool,
     mean_edge_len: Option<f32>,
@@ -203,7 +203,7 @@ impl MeshContainer {
             mesh,
             aabb,
             material,
-            overlapping_vertice_idxs: vec![],
+            overlapping_vertice_idxs: HashSet::new(),
             to_be_deleted: false,
             mean_edge_len,
             indices_to_delete: HashSet::new(),
